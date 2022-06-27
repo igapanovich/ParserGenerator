@@ -18,7 +18,7 @@ type internal Automaton<'symbol when 'symbol : comparison> =
 
         let sb = System.Text.StringBuilder()
 
-        let appendLine str = sb.AppendLine(str) |> ignore
+        let appendLine (str : string) = sb.AppendLine(str) |> ignore
 
         appendLine "States"
         for state in this.states do

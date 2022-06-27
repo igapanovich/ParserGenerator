@@ -33,7 +33,7 @@ type internal ParsingTable<'s when 's : comparison> =
 
         let sb = System.Text.StringBuilder()
 
-        let appendLine str = sb.AppendLine(str) |> ignore
+        let appendLine (str : string) = sb.AppendLine(str) |> ignore
 
         appendLine "STATES"
         for state, num in stateNumbers |> Map.toSeq do
