@@ -1,0 +1,29 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net5</TargetFramework>
+        <OutputType>exe</OutputType>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <Compile Include="Utils.fs" />
+        <Compile Include="DefaultingMap.fs" />
+        <Compile Include="Production.fs" />
+        <Compile Include="Grammar.fs" />
+        <Compile Include="LR0\Configuration.fs" />
+        <Compile Include="LR0\State.fs" />
+        <Compile Include="LR0\StateTransition.fs" />
+        <Compile Include="LR0\Automaton.fs" />
+        <Compile Include="LALR\Configuration.fs" />
+        <Compile Include="LALR\State.fs" />
+        <Compile Include="LALR\StateTransition.fs" />
+        <Compile Include="LALR\Automaton.fs" />
+        <Compile Include="ParsingTable.fs" />
+        <Compile Include="StableSorting.fs" />
+        <Compile Include="CodeGen\Code.fs" />
+        <Compile Include="CodeGen\CodeGenerator.fs" />
+        <Compile Include="ParserDefinition.fs" />
+        <Compile Include="Program.fs" />
+    </ItemGroup>
+
+</Project>
