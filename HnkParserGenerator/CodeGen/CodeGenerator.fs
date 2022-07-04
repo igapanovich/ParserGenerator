@@ -39,19 +39,19 @@ let private recordDecl name fields = code {
 
 let private failwithInvalidState = "failwithInvalidState ()"
 
-let private idtTerminal = "Terminal"
-let private idtReducer = "Reducer"
+let private typeNameTerminal = "Terminal"
+let private typeNameReducer = "Reducer"
 
-let private idReducer = "reducer"
-let private idInputEnumerator = "inputEnumerator"
-let private idLhsStack = "lhsStack"
-let private idStateStack = "stateStack"
-let private idResult = "result"
-let private idAccepted = "accepted"
-let private idLookahead = "lookahead"
-let private idLookaheadIsEof = "lookaheadIsEof"
-let private idKeepGoing = "keepGoing"
-let private idReductionResult = "reduced"
+let private varNameReducer = "reducer"
+let private varNameInputEnumerator = "inputEnumerator"
+let private varNameLhsStack = "lhsStack"
+let private varNameStateStack = "stateStack"
+let private varNameResult = "result"
+let private varNameAccepted = "accepted"
+let private varNameLookahead = "lookahead"
+let private varNameLookaheadIsEof = "lookaheadIsEof"
+let private varNameKeepGoing = "keepGoing"
+let private varNameReductionResult = "reduced"
 
 type private Ident =
     | Ident of string
@@ -94,11 +94,11 @@ let private shift ctx lookahead newState =
         Indented <| code {
             comment "shift"
             if isLookaheadTyped then
-                Line $"{idLhsStack}.Push(x)"
-            Line $"if {idInputEnumerator}.MoveNext()"
-            Line $"then {idLookahead} <- {idInputEnumerator}.Current"
-            Line $"else {idLookaheadIsEof} <- true"
-            Line $"{idStateStack}.Push({ctx.getNum newState})"
+                Line $"{varNameLhsStack}.Push(x)"
+            Line $"if {varNameInputEnumerator}.MoveNext()"
+            Line $"then {varNameLookahead} <- {varNameInputEnumerator}.Current"
+            Line $"else {varNameLookaheadIsEof} <- true"
+            Line $"{varNameStateStack}.Push({ctx.getNum newState})"
         }
     }
 
@@ -118,15 +118,15 @@ let private applyReduction ctx production =
 
     code {
         for _ = 1 to production.into.Length do
-            Line $"{idStateStack}.Pop() |> ignore"
+            Line $"{varNameStateStack}.Pop() |> ignore"
         for argName, argType in args |> List.rev do
-            Line $"let {argName} = {idLhsStack}.Pop() :?> {argType}"
+            Line $"let {argName} = {varNameLhsStack}.Pop() :?> {argType}"
 
         if not args.IsEmpty then
             Line $"let reductionArgs = ({argListStr})"
-            Line $"let {idReductionResult} = {idReducer}.{reducerField} reductionArgs"
+            Line $"let {varNameReductionResult} = {varNameReducer}.{reducerField} reductionArgs"
         else
-            Line $"let {idReductionResult} = {idReducer}.{reducerField}"
+            Line $"let {varNameReductionResult} = {varNameReducer}.{reducerField}"
     }
 
 let private reduce ctx lookahead production =
@@ -134,63 +134,63 @@ let private reduce ctx lookahead production =
     let isLookaheadTyped = ctx.getType lookahead <> None
 
     code {
-        if lookahead = ctx.eof then Line $"| _ when {idLookaheadIsEof} ->"
+        if lookahead = ctx.eof then Line $"| _ when {varNameLookaheadIsEof} ->"
         elif isLookaheadTyped then Line $"| {symbolToTerminalCase ctx.toIdent lookahead} _ ->"
         else Line $"| {symbolToTerminalCase ctx.toIdent lookahead} ->"
 
         Indented <| code {
             comment "reduce"
             applyReduction ctx production
-            Line $"{idLhsStack}.Push({idReductionResult})"
+            Line $"{varNameLhsStack}.Push({varNameReductionResult})"
             Line "let nextState ="
             Indented <| code {
-                Line $"match {idStateStack}.Peek() with"
+                Line $"match {varNameStateStack}.Peek() with"
                 for src, _, dest in goto do
                     Line $"| {ctx.getNum src} -> {ctx.getNum dest}"
                 Line $"| _ -> {failwithInvalidState}"
             }
-            Line $"{idStateStack}.Push(nextState)"
+            Line $"{varNameStateStack}.Push(nextState)"
         }
     }
 
 let private accept ctx production =
     code {
-        Line $"| _ when {idLookaheadIsEof} ->"
+        Line $"| _ when {varNameLookaheadIsEof} ->"
         Indented <| code {
             comment "accept"
             applyReduction ctx production
-            Line $"{idResult} <- {idReductionResult}"
-            Line $"{idAccepted} <- true"
-            Line $"{idKeepGoing} <- false"
+            Line $"{varNameResult} <- {varNameReductionResult}"
+            Line $"{varNameAccepted} <- true"
+            Line $"{varNameKeepGoing} <- false"
         }
     }
 
 let private parseFunction ctx = code {
-    Line $"let parse ({idReducer} : {idtReducer}) (input : {idtTerminal} seq) : Result<{ctx.resultType}, string> ="
+    Line $"let parse ({varNameReducer} : {typeNameReducer}) (input : {typeNameTerminal} seq) : Result<{ctx.resultType}, string> ="
     Indented <| code {
-        Line $"use {idInputEnumerator} = input.GetEnumerator()"
-        Line $"let {idLhsStack} = System.Collections.Stack(50)"
-        Line $"let {idStateStack} = System.Collections.Generic.Stack<int>(50)"
-        Line $"let mutable {idResult} = Unchecked.defaultof<{ctx.resultType}>"
-        Line $"let mutable {idAccepted} = false"
+        Line $"use {varNameInputEnumerator} = input.GetEnumerator()"
+        Line $"let {varNameLhsStack} = System.Collections.Stack(50)"
+        Line $"let {varNameStateStack} = System.Collections.Generic.Stack<int>(50)"
+        Line $"let mutable {varNameResult} = Unchecked.defaultof<{ctx.resultType}>"
+        Line $"let mutable {varNameAccepted} = false"
         blankLine
-        Line $"{idStateStack}.Push({ctx.startingStateNum})"
+        Line $"{varNameStateStack}.Push({ctx.startingStateNum})"
         blankLine
-        Line $"let mutable ({idLookahead}, {idLookaheadIsEof}) ="
+        Line $"let mutable ({varNameLookahead}, {varNameLookaheadIsEof}) ="
         Indented <| code {
-            Line $"if {idInputEnumerator}.MoveNext()"
-            Line $"then ({idInputEnumerator}.Current, false)"
-            Line $"else (Unchecked.defaultof<{idtTerminal}>, true)"
+            Line $"if {varNameInputEnumerator}.MoveNext()"
+            Line $"then ({varNameInputEnumerator}.Current, false)"
+            Line $"else (Unchecked.defaultof<{typeNameTerminal}>, true)"
         }
         blankLine
-        Line $"let mutable {idKeepGoing} = true"
-        Line $"while {idKeepGoing} do"
+        Line $"let mutable {varNameKeepGoing} = true"
+        Line $"while {varNameKeepGoing} do"
         Indented <| code {
-            Line $"match {idStateStack}.Peek() with"
+            Line $"match {varNameStateStack}.Peek() with"
             for state, stateActions in ctx.actionTable do
                 Line $"| {ctx.getNum state} ->"
                 Indented <| code {
-                    Line $"match {idLookahead} with"
+                    Line $"match {varNameLookahead} with"
 
                     let stateActions = stateActions |> List.sortBy (fun (s, _) -> if s = ctx.eof then 0 else 1)
 
@@ -203,14 +203,14 @@ let private parseFunction ctx = code {
                     Line "| _ ->"
                     Indented <| code {
                         comment "error"
-                        Line $"{idKeepGoing} <- false"
+                        Line $"{varNameKeepGoing} <- false"
                     }
                 }
             Line $"| _ -> {failwithInvalidState}"
         }
         blankLine
-        Line $"if {idAccepted}"
-        Line $"then Ok {idResult}"
+        Line $"if {varNameAccepted}"
+        Line $"then Ok {varNameResult}"
         Line "else Error \"TODO error reporting\""
     }
 }
@@ -334,9 +334,9 @@ let generate (args : CodeGenArgs<'s>) (stream : Stream) : unit =
             header
             moduleDecl args.parserModuleName
             blankLine
-            sumTypeDecl idtTerminal ctx.terminalCases
+            sumTypeDecl typeNameTerminal ctx.terminalCases
             blankLine
-            recordDecl idtReducer ctx.reducerFields
+            recordDecl typeNameReducer ctx.reducerFields
             blankLine
             Line "let private failwithInvalidState () = failwith \"Parser is in an invalid state. This is a bug in the parser generator.\""
             blankLine

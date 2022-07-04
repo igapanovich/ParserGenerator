@@ -31,8 +31,6 @@ let main argv =
             Automaton.create eof grammar
             |> ParsingTable.create
 
-        printfn $"{parsingTable}"
-
         let args =
             { newLine = Environment.NewLine
               eofSymbol = eof
