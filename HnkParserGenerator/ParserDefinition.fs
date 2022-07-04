@@ -6,7 +6,7 @@ open System.Text.RegularExpressions
 open HnkParserGenerator
 
 type internal ParserDefinition = {
-    symbolTypes : DefaultingMap<string, string option>
+    symbolTypes : DefaultingMap<string, string>
     productions : Production<string> Set
 }
 
@@ -94,9 +94,9 @@ module internal ParserDefinition =
             let symbolTypes =
                 lines
                 |> Seq.choose (function
-                    | Typing (s, t) -> Some (s, Some t)
+                    | Typing (s, t) -> Some (s, t)
                     | _ -> None)
-                |> DefaultingMap.ofSeq None
+                |> DefaultingMap.ofSeq (nameof(unit))
 
             let productions =
                 lines

@@ -5,6 +5,16 @@ open HnkParserGenerator
 open HnkParserGenerator.CodeGen.Code
 open System.IO
 
+// TODO partial ParseTree with errors instead of reducer
+
+type private Ident =
+    | Ident of string
+    override this.ToString() = let (Ident str) = this in str
+
+type private Type =
+    | Type of string
+    override this.ToString() = let (Type str) = this in str
+
 let private comment str = Line $"// %s{str}"
 
 let private blankLine = Line ""
@@ -17,62 +27,98 @@ let private header = code {
     comment "---------------------------------------------------------------------"
 }
 
-let private moduleDecl name = Line $"module internal %s{name}"
-
-let private sumTypeDecl name cases = code {
-    Line $"type {name} ="
-    Indented <| code {
-        for name, type_ in cases do
-            match type_ with
-            | Some type_ -> Line $"| {name} of ({type_})"
-            | None -> Line $"| {name}"
-    }
-}
-
-let private recordDecl name fields = code {
-    let fieldLine (name, type_) = Line $"{name} : {type_}"
-
-    Line $"type %s{name} = {{"
-    Indented (Block (fields |> List.map fieldLine))
-    Line "}"
-}
-
 let private failwithInvalidState = "failwithInvalidState ()"
 
-let private typeNameTerminal = "Terminal"
-let private typeNameReducer = "Reducer"
+let private terminalType = Type "Terminal"
+let private reducerType = Type "Reducer"
+let private parseErrorLookaheadType = Type "ParseErrorLookahead"
+let private parseErrorType = Type "ParseError"
+let private loggerType = Type "Logger"
 
-let private varNameReducer = "reducer"
-let private varNameInputEnumerator = "inputEnumerator"
-let private varNameLhsStack = "lhsStack"
-let private varNameStateStack = "stateStack"
-let private varNameResult = "result"
-let private varNameAccepted = "accepted"
-let private varNameLookahead = "lookahead"
-let private varNameLookaheadIsEof = "lookaheadIsEof"
-let private varNameKeepGoing = "keepGoing"
-let private varNameReductionResult = "reduced"
+let private reducerParamName = Ident "reducer"
+let private loggerParamName = Ident "logger"
+let private inputParamName = Ident "input"
 
-type private Ident =
-    | Ident of string
-    override this.ToString() = let (Ident str) = this in str
+let private inputEnumeratorVarName = Ident "inputEnumerator"
+let private lhsStackVarName = Ident "lhsStack"
+let private stateStackVarName = Ident "stateStack"
+let private resultVarName = Ident "result"
+let private acceptedVarName = Ident "accepted"
+let private lookaheadVarName = Ident "lookahead"
+let private lookaheadIsEofVarName = Ident "lookaheadIsEof"
+let private keepGoingVarName = Ident "keepGoing"
+let private reductionResultVarName = Ident "reduced"
 
-type private Type =
-    | Type of string
-    override this.ToString() = let (Type str) = this in str
+let private loggerMemberShiftedName = Ident "LogShifted"
+let private loggerMemberShiftedEofLookaheadName = Ident "LogShiftedEofLookahead"
+let private loggerMemberAcceptedName = Ident "LogAccepted"
+let private loggerMemberErrorName = Ident "LogError"
+
+let private loggerStaticMembers =
+    [ loggerMemberShiftedName, Type $"terminal: {terminalType} * lookahead: {terminalType} -> unit"
+      loggerMemberShiftedEofLookaheadName, Type $"terminal: {terminalType} -> unit"
+      loggerMemberAcceptedName, Type "unit -> unit"
+      loggerMemberErrorName, Type "unit -> unit" ]
+
+let private parseErrorLookaheadCases =
+    [ Ident "Terminal", Some terminalType
+      Ident "Eof", None ]
+
+let private parseErrorRecordFields =
+    [ Ident "lookahead", parseErrorLookaheadType
+      Ident "leftHandSideStack", Type "obj list"
+      Ident "stateStack", Type "int list" ]
+
+let private unitType = Type (nameof(unit))
 
 type private Context<'s when 's : comparison> =
     { eof : 's
       resultType : Type
       toIdent : 's -> Ident
-      getType : 's -> Type option
+      getType : 's -> Type
       getNum : State<'s> -> int
       startingStateNum : int
       productions : Production<'s> list
+      states : State<'s> list
       terminalCases : (Ident * Type option) list
       reducerFields : (Ident * Type) list
+      loggerReducedMembers : (Ident * Type) list
+      getLoggerReducedMember : Type -> Ident * Type
       gotoTable : (State<'s> * 's * State<'s>) list
       actionTable : (State<'s> * ('s * Action<'s>) list) list }
+
+let private moduleDecl (name : Ident) = Line $"module internal {name}"
+
+let private sumTypeDecl (typeName : Type) (cases : #seq<Ident * Type option>) = code {
+    Line $"type {typeName} ="
+    Indented <| code {
+        for name, type_ in cases do
+            match type_ with
+            | None -> Line $"| {name}"
+            | Some (Type t) ->
+                let t =
+                    if t.Contains('*')
+                    then $"({t})"
+                    else t
+                Line $"| {name} of {t}"
+    }
+}
+
+let private recordDecl (typeName : Type) (fields : #seq<Ident * Type>) = code {
+    let fieldLine (name, type_) = Line $"{name} : {type_}"
+
+    Line $"type {typeName} = {{"
+    Indented (Block (fields |> Seq.map fieldLine |> List.ofSeq))
+    Line "}"
+}
+
+let private interfaceDecl (typeName : Type) (members : #seq<Ident * Type>) = code {
+    Line $"type {typeName} ="
+    Indented <| code {
+        for memberName, memberType in members do
+            Line $"abstract member {memberName}: {memberType}"
+    }
+}
 
 let private symbolToTerminalCase toIdent s = $"T_{toIdent s}"
 
@@ -86,26 +132,34 @@ let private productionToReducerFieldName toIdent production =
 
 let private shift ctx lookahead newState =
     let caseName = symbolToTerminalCase ctx.toIdent lookahead
-    let isLookaheadTyped = ctx.getType lookahead <> None
+    let lookaheadHasPayload = ctx.getType lookahead <> unitType
     code {
-        if isLookaheadTyped
+        if lookaheadHasPayload
         then Line $"| {caseName} x ->"
         else Line $"| {caseName} ->"
         Indented <| code {
             comment "shift"
-            if isLookaheadTyped then
-                Line $"{varNameLhsStack}.Push(x)"
-            Line $"if {varNameInputEnumerator}.MoveNext()"
-            Line $"then {varNameLookahead} <- {varNameInputEnumerator}.Current"
-            Line $"else {varNameLookaheadIsEof} <- true"
-            Line $"{varNameStateStack}.Push({ctx.getNum newState})"
+            if lookaheadHasPayload then
+                Line $"{lhsStackVarName}.Push(x)"
+            Line $"if {inputEnumeratorVarName}.MoveNext() then"
+            Indented <| code {
+                Line $"{loggerParamName}.{loggerMemberShiftedName}({lookaheadVarName}, {inputEnumeratorVarName}.Current)"
+                Line $"{lookaheadVarName} <- {inputEnumeratorVarName}.Current"
+            }
+            Line "else"
+            Indented <| code {
+                Line $"{loggerParamName}.{loggerMemberShiftedEofLookaheadName}({lookaheadVarName})"
+                Line $"{lookaheadIsEofVarName} <- true"
+            }
+            Line $"{stateStackVarName}.Push({ctx.getNum newState})"
         }
     }
 
 let private applyReduction ctx production =
     let args =
         production.into
-        |> Seq.choose ctx.getType
+        |> Seq.map ctx.getType
+        |> Seq.filter (fun t -> t <> unitType)
         |> Seq.mapi (fun i t -> ($"arg{i + 1}", t) )
         |> List.ofSeq
 
@@ -118,79 +172,88 @@ let private applyReduction ctx production =
 
     code {
         for _ = 1 to production.into.Length do
-            Line $"{varNameStateStack}.Pop() |> ignore"
+            Line $"{stateStackVarName}.Pop() |> ignore"
         for argName, argType in args |> List.rev do
-            Line $"let {argName} = {varNameLhsStack}.Pop() :?> {argType}"
+            Line $"let {argName} = {lhsStackVarName}.Pop() :?> {argType}"
 
-        if not args.IsEmpty then
-            Line $"let reductionArgs = ({argListStr})"
-            Line $"let {varNameReductionResult} = {varNameReducer}.{reducerField} reductionArgs"
-        else
-            Line $"let {varNameReductionResult} = {varNameReducer}.{reducerField}"
+        match args.Length with
+        | 0 -> Line $"let {reductionResultVarName} = {reducerParamName}.{reducerField}"
+        | 1 -> Line $"let {reductionResultVarName} = {reducerParamName}.{reducerField} {argListStr}"
+        | _ -> Line $"let {reductionResultVarName} = {reducerParamName}.{reducerField} ({argListStr})"
     }
 
 let private reduce ctx lookahead production =
-    let goto = ctx.gotoTable |> List.filter (fun (_, s, _) -> s = production.from)
-    let isLookaheadTyped = ctx.getType lookahead <> None
+    let goto =
+        ctx.gotoTable
+        |> List.choose (fun (src, nonTerminal, dst) ->
+            if nonTerminal = production.from
+            then Some (src, dst)
+            else None)
+
+    let lookaheadHasPayload = ctx.getType lookahead <> unitType
+
+    let loggerReducedMemberName, _ = ctx.getLoggerReducedMember (ctx.getType production.from)
 
     code {
-        if lookahead = ctx.eof then Line $"| _ when {varNameLookaheadIsEof} ->"
-        elif isLookaheadTyped then Line $"| {symbolToTerminalCase ctx.toIdent lookahead} _ ->"
+        if lookahead = ctx.eof then Line $"| _ when {lookaheadIsEofVarName} ->"
+        elif lookaheadHasPayload then Line $"| {symbolToTerminalCase ctx.toIdent lookahead} _ ->"
         else Line $"| {symbolToTerminalCase ctx.toIdent lookahead} ->"
 
         Indented <| code {
             comment "reduce"
             applyReduction ctx production
-            Line $"{varNameLhsStack}.Push({varNameReductionResult})"
+            Line $"{lhsStackVarName}.Push({reductionResultVarName})"
             Line "let nextState ="
             Indented <| code {
-                Line $"match {varNameStateStack}.Peek() with"
-                for src, _, dest in goto do
+                Line $"match {stateStackVarName}.Peek() with"
+                for src, dest in goto do
                     Line $"| {ctx.getNum src} -> {ctx.getNum dest}"
                 Line $"| _ -> {failwithInvalidState}"
             }
-            Line $"{varNameStateStack}.Push(nextState)"
+            Line $"{stateStackVarName}.Push(nextState)"
+            Line $"{loggerParamName}.{loggerReducedMemberName}({reductionResultVarName})"
         }
     }
 
 let private accept ctx production =
     code {
-        Line $"| _ when {varNameLookaheadIsEof} ->"
+        Line $"| _ when {lookaheadIsEofVarName} ->"
         Indented <| code {
             comment "accept"
             applyReduction ctx production
-            Line $"{varNameResult} <- {varNameReductionResult}"
-            Line $"{varNameAccepted} <- true"
-            Line $"{varNameKeepGoing} <- false"
+            Line $"{resultVarName} <- {reductionResultVarName}"
+            Line $"{acceptedVarName} <- true"
+            Line $"{keepGoingVarName} <- false"
+            Line $"{loggerParamName}.{loggerMemberAcceptedName}()"
         }
     }
 
 let private parseFunction ctx = code {
-    Line $"let parse ({varNameReducer} : {typeNameReducer}) (input : {typeNameTerminal} seq) : Result<{ctx.resultType}, string> ="
+    Line $"let parse ({reducerParamName} : {reducerType}) ({loggerParamName} : {loggerType}) ({inputParamName} : {terminalType} seq) : Result<{ctx.resultType}, {parseErrorType}> ="
     Indented <| code {
-        Line $"use {varNameInputEnumerator} = input.GetEnumerator()"
-        Line $"let {varNameLhsStack} = System.Collections.Stack(50)"
-        Line $"let {varNameStateStack} = System.Collections.Generic.Stack<int>(50)"
-        Line $"let mutable {varNameResult} = Unchecked.defaultof<{ctx.resultType}>"
-        Line $"let mutable {varNameAccepted} = false"
+        Line $"use {inputEnumeratorVarName} = {inputParamName}.GetEnumerator()"
+        Line $"let {lhsStackVarName} = System.Collections.Stack(50)"
+        Line $"let {stateStackVarName} = System.Collections.Generic.Stack<int>(50)"
+        Line $"let mutable {resultVarName} = Unchecked.defaultof<{ctx.resultType}>"
+        Line $"let mutable {acceptedVarName} = false"
         blankLine
-        Line $"{varNameStateStack}.Push({ctx.startingStateNum})"
+        Line $"{stateStackVarName}.Push({ctx.startingStateNum})"
         blankLine
-        Line $"let mutable ({varNameLookahead}, {varNameLookaheadIsEof}) ="
+        Line $"let mutable {lookaheadVarName}, {lookaheadIsEofVarName} ="
         Indented <| code {
-            Line $"if {varNameInputEnumerator}.MoveNext()"
-            Line $"then ({varNameInputEnumerator}.Current, false)"
-            Line $"else (Unchecked.defaultof<{typeNameTerminal}>, true)"
+            Line $"if {inputEnumeratorVarName}.MoveNext()"
+            Line $"then ({inputEnumeratorVarName}.Current, false)"
+            Line $"else (Unchecked.defaultof<{terminalType}>, true)"
         }
         blankLine
-        Line $"let mutable {varNameKeepGoing} = true"
-        Line $"while {varNameKeepGoing} do"
+        Line $"let mutable {keepGoingVarName} = true"
+        Line $"while {keepGoingVarName} do"
         Indented <| code {
-            Line $"match {varNameStateStack}.Peek() with"
+            Line $"match {stateStackVarName}.Peek() with"
             for state, stateActions in ctx.actionTable do
                 Line $"| {ctx.getNum state} ->"
                 Indented <| code {
-                    Line $"match {varNameLookahead} with"
+                    Line $"match {lookaheadVarName} with"
 
                     let stateActions = stateActions |> List.sortBy (fun (s, _) -> if s = ctx.eof then 0 else 1)
 
@@ -203,22 +266,29 @@ let private parseFunction ctx = code {
                     Line "| _ ->"
                     Indented <| code {
                         comment "error"
-                        Line $"{varNameKeepGoing} <- false"
+                        Line $"{keepGoingVarName} <- false"
+                        Line $"{loggerParamName}.{loggerMemberErrorName}()"
                     }
                 }
             Line $"| _ -> {failwithInvalidState}"
         }
         blankLine
-        Line $"if {varNameAccepted}"
-        Line $"then Ok {varNameResult}"
-        Line "else Error \"TODO error reporting\""
+        Line $"if {acceptedVarName}"
+        Line $"then Ok {resultVarName}"
+        Line "else Error {"
+        Indented <| code {
+            Line $"lookahead = if {lookaheadIsEofVarName} then Eof else Terminal {lookaheadVarName}"
+            Line $"leftHandSideStack = {lhsStackVarName}.ToArray() |> List.ofArray"
+            Line $"stateStack = {stateStackVarName} |> List.ofSeq"
+        }
+        Line "}"
     }
 }
 
 type CodeGenArgs<'s when 's : comparison> =
     { newLine : string
       eofSymbol : 's
-      symbolTypes : DefaultingMap<'s, string option>
+      symbolTypes : DefaultingMap<'s, string>
       symbolToIdentifier : 's -> string
       parsingTable : ParsingTable<'s>
       parserModuleName : string }
@@ -226,12 +296,11 @@ type CodeGenArgs<'s when 's : comparison> =
 let private createContext args =
     let toIdent = args.symbolToIdentifier >> Ident
 
-    let getType s = args.symbolTypes |> DefaultingMap.find s |> Option.map Type
+    let getType s = args.symbolTypes |> DefaultingMap.find s |> Type
 
     let resultType =
         args.parsingTable.grammar.startingSymbol
         |> getType
-        |> Option.defaultWith (fun () -> failwith "Starting symbol must have its type specified")
 
     let states =
         args.parsingTable.action
@@ -239,12 +308,7 @@ let private createContext args =
         |> Seq.map fst
         |> List.ofSeq
 
-    let stateNumbers =
-        states
-        |> Seq.mapi (fun i state -> (state, i))
-        |> Map.ofSeq
-
-    let getNum s = stateNumbers |> Map.find s
+    let getNum s = args.parsingTable.stateNumber |> Map.find s
 
     let startingStateNum =
         states
@@ -264,6 +328,10 @@ let private createContext args =
         |> Seq.map (fun t ->
             let name = symbolToTerminalCase toIdent t |> Ident
             let type_ = getType t
+            let type_ =
+                if type_ = unitType
+                then None
+                else Some type_
             (name, type_))
         |> Seq.sort
         |> List.ofSeq
@@ -274,22 +342,58 @@ let private createContext args =
             let name = productionToReducerFieldName toIdent p
 
             let type_ =
-                let resultType =
-                    getType p.from
-                    |> Option.defaultWith (fun () -> failwith "non-terminals must have their type specified")
+                let resultType = getType p.from
 
-                let argType =
+                let argTypes =
                     p.into
-                    |> Seq.choose (fun s -> getType s |> Option.map (fun t -> $"({t})"))
+                    |> List.choose (fun s ->
+                        match getType s with
+                        | t when t = unitType -> None
+                        | t -> Some t)
+
+                let argTypeStrings =
+                    argTypes
+                    |> List.map string
+
+                let argTypeStrings =
+                    if argTypeStrings.Length > 1 then
+                        argTypeStrings
+                        |> List.map (fun tstr ->
+                            if tstr.Contains('*')
+                            then $"({tstr})"
+                            else tstr)
+                    else
+                        argTypeStrings
+
+                let argTypeString =
+                    argTypeStrings
                     |> String.concat " * "
 
-                if argType <> ""
-                then Type $"{argType} -> {resultType}"
+                if argTypeStrings.Length > 0
+                then Type $"{argTypeString} -> {resultType}"
                 else Type $"{resultType}"
 
             (name, type_))
         |> Seq.sortBy fst
         |> List.ofSeq
+
+    let loggerReduceMembersWithNonTerminals =
+        args.parsingTable.grammar.productions
+        |> Seq.map (fun p ->
+            let nonTerminalType = getType p.from
+            let memberName = Ident $"LogReduced{toIdent p.from}"
+            let memberType = Type $"nonTerminal: {nonTerminalType} -> unit"
+            (nonTerminalType, (memberName, memberType)))
+        |> Seq.distinct
+        |> List.ofSeq
+
+    let loggerReduceMembers =
+        loggerReduceMembersWithNonTerminals
+        |> List.map snd
+    let getLoggerReducedMember type_ =
+        loggerReduceMembersWithNonTerminals
+        |> Seq.find (fun (t, _) -> t = type_)
+        |> snd
 
     let gotoTable =
         args.parsingTable.goto
@@ -319,8 +423,11 @@ let private createContext args =
       getNum = getNum
       startingStateNum = startingStateNum
       productions = productions
+      states = states
       terminalCases = terminalCases
       reducerFields = reducerFields
+      loggerReducedMembers = loggerReduceMembers
+      getLoggerReducedMember = getLoggerReducedMember
       gotoTable = gotoTable
       actionTable = actionTable }
 
@@ -332,11 +439,22 @@ let generate (args : CodeGenArgs<'s>) (stream : Stream) : unit =
     let parserCode =
         code {
             header
-            moduleDecl args.parserModuleName
+            moduleDecl (Ident args.parserModuleName)
             blankLine
-            sumTypeDecl typeNameTerminal ctx.terminalCases
+            Line "(*"
             blankLine
-            recordDecl typeNameReducer ctx.reducerFields
+            Line (string args.parsingTable)
+            Line "*)"
+            blankLine
+            sumTypeDecl terminalType ctx.terminalCases
+            blankLine
+            recordDecl reducerType ctx.reducerFields
+            blankLine
+            interfaceDecl loggerType (loggerStaticMembers @ ctx.loggerReducedMembers)
+            blankLine
+            sumTypeDecl parseErrorLookaheadType parseErrorLookaheadCases
+            blankLine
+            recordDecl parseErrorType parseErrorRecordFields
             blankLine
             Line "let private failwithInvalidState () = failwith \"Parser is in an invalid state. This is a bug in the parser generator.\""
             blankLine

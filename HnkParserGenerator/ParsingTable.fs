@@ -11,16 +11,22 @@ type internal ParsingTable<'s when 's : comparison> =
         grammar : Grammar<'s>
         goto : Map<State<'s>, Map<'s, State<'s>>>
         action : Map<State<'s>, Map<'s, Action<'s>>>
+        stateNumber : Map<State<'s>, int>
     }
     override this.ToString() =
-        let stateNumbers =
-            this.action
-            |> Map.toSeq
-            |> Seq.map fst
-            |> Seq.mapi (fun i state -> (state, i))
-            |> Map.ofSeq
 
-        let productionNumbers =
+        let sb = System.Text.StringBuilder()
+
+        let appendLine (str : string) = sb.AppendLine(str) |> ignore
+
+        appendLine "STATES"
+        for state, num in this.stateNumber |> Map.toSeq |> Seq.sortBy snd do
+            appendLine $"   {num} {state}"
+
+        appendLine ""
+        appendLine "PRODUCTIONS"
+
+        let productions =
             this.action
             |> Map.toSeq
             |> Seq.map snd
@@ -28,35 +34,48 @@ type internal ParsingTable<'s when 's : comparison> =
             |> Seq.map snd
             |> Seq.choose (function Reduce prod -> Some prod | _ -> None)
             |> Seq.distinct
-            |> Seq.mapi (fun i p -> (p, i))
-            |> Map.ofSeq
 
-        let sb = System.Text.StringBuilder()
+        for prod in productions do
+            appendLine $"   {prod}"
 
-        let appendLine (str : string) = sb.AppendLine(str) |> ignore
+        appendLine ""
+        appendLine "ACTION"
+        let actionStrings =
+            [ ("State", "Lookahead", "Action")
 
-        appendLine "STATES"
-        for state, num in stateNumbers |> Map.toSeq do
-            appendLine $"   {num} {state}"
+              for state, stateAction in this.action |> Map.toSeq do
+                for symbol, action in stateAction |> Map.toSeq do
+                    let action =
+                        match action with
+                        | Accept _ -> "accept"
+                        | Shift state -> $"shift ({this.stateNumber[state]})"
+                        | Reduce prod -> $"reduce ({prod})"
+                    (string this.stateNumber[state], string symbol, string action) ]
 
-        appendLine "PRODUCTIONS"
-        for prod, num in productionNumbers |> Map.toSeq do
-            appendLine $"   {num} {prod}"
+        let statePadding = actionStrings |> Seq.map (fun (x, _, _) -> x.Length) |> Seq.max
+        let symbolPadding = actionStrings |> Seq.map (fun (_, x, _) -> x.Length) |> Seq.max
 
-        appendLine "ACTION (State | Lookahead | Action)"
-        for state, stateAction in this.action |> Map.toSeq do
-            for symbol, action in stateAction |> Map.toSeq do
-                let action =
-                    match action with
-                    | Accept _ -> "acc"
-                    | Shift state -> $"s{stateNumbers[state]}"
-                    | Reduce prod -> $"r{productionNumbers[prod]}"
-                appendLine $"   {stateNumbers[state]} {symbol} {action}"
+        for state, symbol, action in actionStrings do
+            let state = state.PadRight(statePadding)
+            let symbol = symbol.PadRight(symbolPadding)
+            appendLine $"   {state} {symbol} {action}"
 
-        appendLine "GOTO (Source state | Symbol | Destination state)"
-        for src, stateGoto in this.goto |> Map.toSeq do
-            for symbol, dest in stateGoto |> Map.toSeq do
-                appendLine $"   {stateNumbers[src]} {symbol} {stateNumbers[dest]}"
+        appendLine ""
+        appendLine "GOTO"
+        let gotoStrings =
+            [ ("Source state", "Symbol", "Destination state")
+
+              for src, stateGoto in this.goto |> Map.toSeq do
+                  for symbol, dest in stateGoto |> Map.toSeq do
+                      (string this.stateNumber[src], string symbol, string this.stateNumber[dest]) ]
+
+        let srcPadding = gotoStrings |> Seq.map (fun (x, _, _) -> x.Length) |> Seq.max
+        let symbolPadding = gotoStrings |> Seq.map (fun (_, x, _) -> x.Length) |> Seq.max
+
+        for src, symbol, dest in gotoStrings do
+            let src = src.PadRight(srcPadding)
+            let symbol = symbol.PadRight(symbolPadding)
+            appendLine $"   {src} {symbol} {dest}"
 
         sb.ToString()
 
@@ -113,6 +132,14 @@ module internal ParsingTable =
                         yield (state, stateGoto)
             } |> Map.ofSeq
 
+        let stateNumbers =
+            action
+            |> Map.toSeq
+            |> Seq.map fst
+            |> Seq.mapi (fun i state -> (state, i))
+            |> Map.ofSeq
+
         { grammar = automaton.grammar
           action = action
-          goto = goto }
+          goto = goto
+          stateNumber = stateNumbers }

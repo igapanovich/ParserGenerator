@@ -10,5 +10,5 @@ type internal State<'symbol when 'symbol : comparison> =
     override this.ToString () =
         this.configurations
         |> Seq.map string
-        |> String.concat "   "
+        |> String.concat " | "
         |> sprintf "{ %s }"
