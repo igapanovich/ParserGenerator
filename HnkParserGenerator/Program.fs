@@ -1,12 +1,12 @@
 open System
 open System.IO
 open HnkParserGenerator
+open HnkParserGenerator.ParserDefinition
 open HnkParserGenerator.CodeGen
 open HnkParserGenerator.CodeGen.CodeGenerator
 open HnkParserGenerator.LALR
 
 let eof = "$"
-let epsilon = "''"
 
 [<EntryPoint>]
 let main argv =
@@ -19,14 +19,29 @@ let main argv =
 
     use definitionFile = File.OpenRead definitionFilePath
 
-    let parserDefinition = ParserDefinition.parse epsilon definitionFile
+    let parserDefinition = ParserDefinitionParser.parse definitionFile
 
     match parserDefinition with
     | Error error ->
         Console.WriteLine error
         1
     | Ok parserDefinition ->
-        let grammar = Grammar.fromProductions parserDefinition.productions
+        let grammar =
+            let grammarProductions =
+                parserDefinition.productions
+                |> Seq.collect (fun p ->
+                    match p.cases with
+                    | Single into ->
+                        { from = p.from; into = into }
+                        |> Seq.singleton
+                    | Many cases ->
+                        cases
+                        |> Seq.map (fun (_, into) ->
+                            { from = p.from; into = into })
+                    )
+                |> Set.ofSeq
+            Grammar.fromProductions grammarProductions
+
         let parsingTable =
             Automaton.create eof grammar
             |> ParsingTable.create
@@ -34,12 +49,12 @@ let main argv =
         let args =
             { newLine = Environment.NewLine
               eofSymbol = eof
-              symbolTypes = parserDefinition.symbolTypes
               symbolToIdentifier = id
               parsingTable = parsingTable
-              parserModuleName = moduleFullName }
+              parserModuleName = moduleFullName
+              parserDefinition = parserDefinition }
 
         use outputFile = File.Create outputFilePath
 
-        generate args outputFile
+        CodeGenerator.generate args outputFile
         0
