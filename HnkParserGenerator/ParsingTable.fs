@@ -87,7 +87,7 @@ module internal ParsingTable =
                     let finalConfigurations = state.configurations |> Set.filter Configuration.isFinal
 
                     let stateActions =
-                        seq {
+                        [
                             for cfg in finalConfigurations do
                                 for lookahead in cfg.lookahead do
                                     let action =
@@ -103,9 +103,25 @@ module internal ParsingTable =
                                     automaton.grammar.terminals.Contains(transition.symbol)
                                 then
                                     yield (transition.symbol, Shift transition.destinationState)
-                        } |> Map.ofSeq
+                        ]
 
-                    yield (state, stateActions)
+                    let stateActionsMap = stateActions |> Map.ofSeq
+
+                    if stateActions.Length <> stateActionsMap.Count then
+                        let _, conflictActions =
+                            stateActions
+                            |> Seq.groupBy fst
+                            |> Seq.filter (fun (_, actions) -> actions |> Seq.length > 1)
+                            |> Seq.head
+
+                        let hasShifts = conflictActions |> Seq.exists (function _, Shift _ -> true | _ -> false)
+
+                        if hasShifts then
+                            failwith "Shift/Reduce conflict - grammar is not LR(1)"
+                        else
+                            failwith "Reduce/Reduce conflict - grammar is not LALR"
+
+                    yield (state, stateActionsMap)
             } |> Map.ofSeq
 
         let goto =
