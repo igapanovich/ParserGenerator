@@ -12,10 +12,18 @@ module internal ParserDefinitionParser =
     let private productionRegex =
         Regex("^(?<from>[a-zA-Z]+)(\.(?<fromCase>[a-zA-Z]+))?\s*->\s*(?<into>[a-zA-Z ]*)$")
 
-    let private parseLine (line: string) : Result<DefinitionItem<_>, string> =
-        let m = productionRegex.Match(line)
+    let private commentRegex = Regex("^//")
 
+    let private (|IsMatch|_|) (regex: Regex) (text: string) =
+        let m = regex.Match(text)
         if m.Success then
+            Some m
+        else
+            None
+
+    let private parseLine (line: string) : Result<DefinitionItem<_>, string> option =
+        match line with
+        | IsMatch productionRegex m ->
             let from = m.Groups["from"].Value
 
             let into =
@@ -34,17 +42,23 @@ module internal ParserDefinitionParser =
                 else
                     Single into
 
-            { from = from; cases = cases } |> Production |> Ok
-        else
-            let m = typingRegex.Match(line)
+            { from = from; cases = cases }
+            |> Production
+            |> Ok
+            |> Some
+        | IsMatch typingRegex m ->
+            let symbol = m.Groups["symbol"].Value
+            let type_ = m.Groups["type"].Value
 
-            if m.Success then
-                let symbol = m.Groups["symbol"].Value
-                let type_ = m.Groups["type"].Value
-
-                { symbol = symbol; type_ = type_ } |> Typing |> Ok
-            else
-                Error line
+            { symbol = symbol; type_ = type_ }
+            |> Typing
+            |> Ok
+            |> Some
+        | IsMatch commentRegex _ ->
+            None
+        | _ ->
+            Error line
+            |> Some
 
     let private seqSplit2 (f: 'a -> Choice<'b, 'c>) (seq: #seq<'a>) : 'b list * 'c list =
         let bs = System.Collections.Generic.List()
@@ -81,7 +95,8 @@ module internal ParserDefinitionParser =
                     reader.ReadLine()
             }
             |> Seq.filter (String.IsNullOrWhiteSpace >> not)
-            |> Seq.map parseLine
+            |> Seq.choose parseLine
+
 
         let definitionItems, errorLines =
             definitionItems

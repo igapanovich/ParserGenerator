@@ -26,25 +26,25 @@ let main argv =
         Console.WriteLine error
         1
     | Ok parserDefinition ->
-        let grammar =
-            let grammarProductions =
-                parserDefinition.productions
-                |> Seq.collect (fun p ->
-                    match p.cases with
-                    | Single into ->
-                        { from = p.from; into = into }
-                        |> Seq.singleton
-                    | Many cases ->
-                        cases
-                        |> Seq.map (fun (_, into) ->
-                            { from = p.from; into = into })
-                    )
-                |> Set.ofSeq
-            Grammar.fromProductions grammarProductions
+        let grammarProductions =
+            parserDefinition.productions
+            |> Seq.collect (fun p ->
+                match p.cases with
+                | Single into ->
+                    { from = p.from; into = into }
+                    |> Seq.singleton
+                | Many cases ->
+                    cases
+                    |> Seq.map (fun (_, into) ->
+                        { from = p.from; into = into })
+                )
+            |> Set.ofSeq
 
-        let parsingTable =
-            Automaton.create eof grammar
-            |> ParsingTable.create
+        let grammar = Grammar.fromProductions grammarProductions
+
+        let automaton = Automaton.create eof grammar
+
+        let parsingTable = ParsingTable.create automaton
 
         let args =
             { newLine = Environment.NewLine
