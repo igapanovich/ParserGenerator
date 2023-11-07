@@ -454,19 +454,20 @@ let private writeParseFunction (context : Context<'s>) : Code =
                             | Reduce production -> writeReduce lookahead production
                             | Accept production -> writeAccept production
 
-                        let expectedSymbolCtorsStr =
-                            stateActions
-                            |> Seq.map (fun (s, _) ->
-                                let ctor = context.getExpectedItemCaseForSymbol s
-                                $"{typeSignatureToStr context.expectedItemTypeSignature}.{ctor.name}")
-                            |> String.concat "; "
+                        if stateActions.Length < context.inputType.constructors.Length then
+                            let expectedSymbolCtorsStr =
+                                stateActions
+                                |> Seq.map (fun (s, _) ->
+                                    let ctor = context.getExpectedItemCaseForSymbol s
+                                    $"{typeSignatureToStr context.expectedItemTypeSignature}.{ctor.name}")
+                                |> String.concat "; "
 
-                        Line "| _ ->"
-                        Indented <| code {
-                            Line "// error"
-                            Line $"{expectedVarName} <- [{expectedSymbolCtorsStr}]"
-                            Line $"{keepGoingVarName} <- false"
-                        }
+                            Line "| _ ->"
+                            Indented <| code {
+                                Line "// error"
+                                Line $"{expectedVarName} <- [{expectedSymbolCtorsStr}]"
+                                Line $"{keepGoingVarName} <- false"
+                            }
                     }
                 Line $"| _ -> {failwithInvalidState}"
             }
