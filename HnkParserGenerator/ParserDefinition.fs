@@ -8,7 +8,7 @@ type ProductionDefinition<'s when 's: comparison> =
     { from: 's
       cases: ProductionDefinitionCases<'s> }
 
-type Typing<'s> = { symbol: 's; type_: string }
+type Typing<'s> = { terminal: 's; type_: string }
 
 type DefinitionItem<'s when 's: comparison> =
     | Typing of Typing<'s>

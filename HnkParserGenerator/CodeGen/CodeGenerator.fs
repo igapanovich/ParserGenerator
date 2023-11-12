@@ -33,26 +33,37 @@ type private Context<'s when 's: comparison> =
       errorTypeSignature: TypeSignature
       startingSymbol: 's
       eofSymbol : 's
-      getSymbolType: 's -> TypeSignature
+      getSymbolType: 's -> TypeSignature option
       startingState : State<'s>
       getStateNumber : State<'s> -> int
       gotoTable : (State<'s> * 's * State<'s>) list
       actionTable : (State<'s> * ('s * Action<'s>) list) list }
 
 let private createContext (args: CodeGenArgs<'s>) : Context<'s> =
+    let allTerminals =
+        let terminalsFromGrammar = args.parsingTable.grammar.terminals
+        let terminalsFromTypings = args.parserDefinition.typings |> Set.map (fun t -> t.terminal)
+        terminalsFromGrammar + terminalsFromTypings
 
     let terminalTypesWithSymbols =
-        args.parserDefinition.typings
-        |> Seq.map (fun typing ->
+        allTerminals
+        |> Seq.map (fun terminal ->
+            let typing =
+                args.parserDefinition.typings
+                |> Seq.tryFind (fun typing -> typing.terminal = terminal)
             let t =
-              { name = args.symbolToIdentifier typing.symbol
-                aliasedType = PlainType typing.type_ }
-            (typing.symbol, t))
+                match typing with
+                | Some typing when typing.type_ <> "unit" ->
+                    { name = args.symbolToIdentifier typing.terminal
+                      aliasedType = PlainType typing.type_ }
+                    |> Some
+                | _ -> None
+            (terminal, t))
         |> List.ofSeq
 
     let terminalAliasTypes =
         terminalTypesWithSymbols
-        |> List.map snd
+        |> List.choose snd
 
     let getTypeAliasForTerminal symbol =
         terminalTypesWithSymbols
@@ -67,12 +78,16 @@ let private createContext (args: CodeGenArgs<'s>) : Context<'s> =
               let name = args.symbolToIdentifier prod.from
 
               let productionIntoToType (into: list<'s>) =
-                  if into.Length = 0 then
-                      None
-                  else
+                  let typeString =
                       into
+                      |> Seq.filter (fun symbol -> args.parsingTable.grammar.nonTerminals.Contains(symbol) || getTypeAliasForTerminal symbol <> None)
                       |> Seq.map args.symbolToIdentifier
                       |> String.concat " * "
+
+                  if typeString.Length = 0 then
+                      None
+                  else
+                      typeString
                       |> PlainType
                       |> Some
 
@@ -82,7 +97,7 @@ let private createContext (args: CodeGenArgs<'s>) : Context<'s> =
                       let ctor =
                           { SumTypeConstructor.name = name
                             type_ = productionIntoToType into }
-                      [ (into, ctor) ]
+                      [ into, ctor ]
                   | Many cases ->
                       cases
                       |> Seq.map (fun (caseName, into) ->
@@ -112,13 +127,16 @@ let private createContext (args: CodeGenArgs<'s>) : Context<'s> =
         |> Seq.exactlyOne
 
     let inputTypeConstructorsWithSymbols =
-        args.parserDefinition.typings
-        |> Seq.map (fun t ->
-            let typeAlias = getTypeAliasForTerminal t.symbol
+        allTerminals
+        |> Seq.map (fun terminal ->
+            let type_ =
+                getTypeAliasForTerminal terminal
+                |> Option.map (fun typeAlias -> PlainType typeAlias.name)
+
             let ctor =
-              { SumTypeConstructor.name = args.symbolToIdentifier t.symbol
-                type_ = Some(PlainType typeAlias.name) }
-            (t.symbol, ctor))
+              { SumTypeConstructor.name = args.symbolToIdentifier terminal
+                type_ = type_ }
+            (terminal, ctor))
         |> List.ofSeq
 
     let inputType =
@@ -139,7 +157,22 @@ let private createContext (args: CodeGenArgs<'s>) : Context<'s> =
             else None)
         |> Seq.exactlyOne
 
-    let getSymbolType s = args.symbolToIdentifier s |> PlainType
+    let getSymbolType symbol =
+        if args.parsingTable.grammar.terminals.Contains(symbol) then
+            terminalTypesWithSymbols
+            |> Seq.choose (fun (s, t) ->
+                if s = symbol
+                then Some (t |> Option.map (fun t -> t.name))
+                else None)
+            |> Seq.head
+        else
+            nonTerminalTypesWithSymbols
+            |> Seq.choose (fun (s, _, t) ->
+                if s = symbol
+                then Some (Some t.name)
+                else None)
+            |> Seq.head
+        |> Option.map PlainType
 
     let startingSymbol =
         let nonTerminals =
@@ -301,6 +334,7 @@ let private writeParseFunction (context : Context<'s>) : Code =
     let resultTypeStr =
         context.startingSymbol
         |> context.getSymbolType
+        |> Option.get
         |> typeSignatureToStr
 
     let errorResultTypeStr =
@@ -328,11 +362,16 @@ let private writeParseFunction (context : Context<'s>) : Code =
 
     let writeShift (lookahead : 's) (newState : State<'s>) : Code =
         let inputConstructor = context.getInputCaseForSymbol lookahead
+        let ctorArgString =
+            match inputConstructor.type_ with
+            | Some _ -> " x"
+            | None -> ""
         code {
-            Line $"| {typeSignatureToStr context.inputTypeSignature}.{inputConstructor.name} x ->"
+            Line $"| {typeSignatureToStr context.inputTypeSignature}.{inputConstructor.name}{ctorArgString} ->"
             Indented <| code {
                 Line "// shift"
-                Line $"{lhsStackVarName}.Push(x)"
+                if inputConstructor.type_ <> None then
+                    Line $"{lhsStackVarName}.Push(x)"
                 Line $"if {inputEnumeratorVarName}.MoveNext() then"
                 Indented <| code {
                     Line $"{lookaheadVarName} <- {inputEnumeratorVarName}.Current"
@@ -348,7 +387,7 @@ let private writeParseFunction (context : Context<'s>) : Code =
     let writeReduction (production : HnkParserGenerator.Production<'s>) : Code =
         let args =
             production.into
-            |> Seq.map context.getSymbolType
+            |> Seq.choose context.getSymbolType
             |> Seq.mapi (fun i t -> ($"arg{i + 1}", t) )
             |> List.ofSeq
 

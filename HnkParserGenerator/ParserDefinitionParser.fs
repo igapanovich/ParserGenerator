@@ -50,7 +50,7 @@ module internal ParserDefinitionParser =
             let symbol = m.Groups["symbol"].Value
             let type_ = m.Groups["type"].Value
 
-            { symbol = symbol; type_ = type_ }
+            { terminal = symbol; type_ = type_ }
             |> Typing
             |> Ok
             |> Some
@@ -116,7 +116,7 @@ module internal ParserDefinitionParser =
 
             let uniqueTypingCount =
                 typings
-                |> Seq.map (fun t -> t.symbol)
+                |> Seq.map (fun t -> t.terminal)
                 |> Seq.distinct
                 |> Seq.length
 
