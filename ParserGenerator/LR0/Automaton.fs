@@ -42,7 +42,7 @@ module internal Automaton =
             let nonFinalConfigsByAheadSymbol =
                 state.configurations
                 |> Seq.groupBy Configuration.tryAheadSymbol
-                |> Seq.choose (fun (smbl, cfgs) -> option { let! smbl = smbl in return (smbl, cfgs) })
+                |> Seq.choose (fun (smbl, cfgs) -> smbl |> Option.map (fun smbl -> (smbl, cfgs)))
 
             for aheadSymbol, configs in nonFinalConfigsByAheadSymbol ->
                 let nextAutomatonState =
