@@ -1,5 +1,5 @@
-namespace HnkParserGenerator
-open HnkParserGenerator.LALR
+namespace ParserGenerator
+open ParserGenerator.LALR
 
 type internal Action<'s when 's : comparison> =
     | Shift of State<'s>

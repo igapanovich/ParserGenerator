@@ -1,4 +1,4 @@
-namespace HnkParserGenerator
+namespace ParserGenerator
 open System
 
 module internal List =

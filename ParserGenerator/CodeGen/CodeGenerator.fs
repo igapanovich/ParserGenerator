@@ -1,11 +1,11 @@
-module internal HnkParserGenerator.CodeGen.CodeGenerator
+module internal ParserGenerator.CodeGen.CodeGenerator
 
-open HnkParserGenerator.LALR
-open HnkParserGenerator
-open HnkParserGenerator.CodeGen.Code
+open ParserGenerator.LALR
+open ParserGenerator
+open ParserGenerator.CodeGen.Code
 open System.IO
-open HnkParserGenerator.CodeGen.CodeModel
-open HnkParserGenerator.ParserDefinition
+open ParserGenerator.CodeGen.CodeModel
+open ParserGenerator.ParserDefinition
 
 let private blankLine = Line ""
 
@@ -384,7 +384,7 @@ let private writeParseFunction (context : Context<'s>) : Code =
             }
         }
 
-    let writeReduction (production : HnkParserGenerator.Production<'s>) : Code =
+    let writeReduction (production : ParserGenerator.Production<'s>) : Code =
         let args =
             production.into
             |> Seq.choose context.getSymbolType
@@ -411,7 +411,7 @@ let private writeParseFunction (context : Context<'s>) : Code =
             | _ -> Line $"let {reductionResultVarName} = {ctorStr} ({argListStr})"
         }
 
-    let writeReduce (lookahead : 's) (production : HnkParserGenerator.Production<'s>) : Code =
+    let writeReduce (lookahead : 's) (production : ParserGenerator.Production<'s>) : Code =
         let goto =
             context.gotoTable
             |> Seq.choose (fun (src, nonTerminal, dst) ->
@@ -443,7 +443,7 @@ let private writeParseFunction (context : Context<'s>) : Code =
             }
         }
 
-    let writeAccept (production : HnkParserGenerator.Production<'s>) : Code =
+    let writeAccept (production : ParserGenerator.Production<'s>) : Code =
         code {
             Line $"| _ when {lookaheadIsEofVarName} ->"
             Indented <| code {

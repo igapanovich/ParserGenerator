@@ -1,4 +1,4 @@
-namespace HnkParserGenerator
+namespace ParserGenerator
 
 type internal DefaultingMap<'k , 'v when 'k : comparison> =
     private {

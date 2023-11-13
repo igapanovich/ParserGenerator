@@ -1,6 +1,6 @@
-module internal HnkParserGenerator.StableSorting
+module internal ParserGenerator.StableSorting
 
-open HnkParserGenerator.LALR
+open ParserGenerator.LALR
 open System
 
 let keyOfSymbol (symbol : 'a when 'a :> IComparable) =

@@ -1,7 +1,7 @@
-﻿namespace HnkParserGenerator.LALR
+﻿namespace ParserGenerator.LALR
 
 open System.Collections.Generic
-open HnkParserGenerator
+open ParserGenerator
 
 type internal Automaton<'symbol when 'symbol : comparison> =
     private {

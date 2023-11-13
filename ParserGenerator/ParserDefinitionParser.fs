@@ -1,10 +1,10 @@
-namespace HnkParserGenerator.CodeGen
+namespace ParserGenerator.CodeGen
 
 open System
 open System.IO
 open System.Text.RegularExpressions
-open HnkParserGenerator
-open HnkParserGenerator.ParserDefinition
+open ParserGenerator
+open ParserGenerator.ParserDefinition
 
 module internal ParserDefinitionParser =
     let private typingRegex = Regex("^(?<symbol>[a-zA-Z]+)\s*:\s*(?<type>.+)$")

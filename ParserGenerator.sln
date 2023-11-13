@@ -1,6 +1,6 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "HnkParserGenerator", "HnkParserGenerator\HnkParserGenerator.fsproj", "{AF55E61A-3E9C-46D2-8039-DAEBCEA2E198}"
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "ParserGenerator", "ParserGenerator\ParserGenerator.fsproj", "{AF55E61A-3E9C-46D2-8039-DAEBCEA2E198}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

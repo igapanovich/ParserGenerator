@@ -1,6 +1,6 @@
-namespace HnkParserGenerator.LR0
+namespace ParserGenerator.LR0
 
-open HnkParserGenerator
+open ParserGenerator
 
 type internal Automaton<'symbol when 'symbol : comparison> =
     private {

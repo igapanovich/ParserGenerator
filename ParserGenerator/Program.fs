@@ -1,10 +1,10 @@
 open System
 open System.IO
-open HnkParserGenerator
-open HnkParserGenerator.ParserDefinition
-open HnkParserGenerator.CodeGen
-open HnkParserGenerator.CodeGen.CodeGenerator
-open HnkParserGenerator.LALR
+open ParserGenerator
+open ParserGenerator.ParserDefinition
+open ParserGenerator.CodeGen
+open ParserGenerator.CodeGen.CodeGenerator
+open ParserGenerator.LALR
 
 let eof = "$"
 

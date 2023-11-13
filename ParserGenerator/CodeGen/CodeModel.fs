@@ -1,4 +1,4 @@
-module HnkParserGenerator.CodeGen.CodeModel
+module ParserGenerator.CodeGen.CodeModel
 
 type TypeSignature =
     | PlainType of string

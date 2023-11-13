@@ -1,4 +1,4 @@
-namespace HnkParserGenerator.ParserDefinition
+namespace ParserGenerator.ParserDefinition
 
 type ProductionDefinitionCases<'s when 's: comparison> =
     | Single of 's list

@@ -1,4 +1,4 @@
-namespace HnkParserGenerator
+namespace ParserGenerator
 open System.Diagnostics
 
 [<DebuggerDisplay("{ToString()}")>]

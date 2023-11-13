@@ -1,4 +1,4 @@
-namespace HnkParserGenerator.LALR
+namespace ParserGenerator.LALR
 
 open System.Diagnostics
 

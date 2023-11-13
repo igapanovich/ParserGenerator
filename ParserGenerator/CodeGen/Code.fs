@@ -1,4 +1,4 @@
-namespace HnkParserGenerator.CodeGen
+namespace ParserGenerator.CodeGen
 
 open System.IO
 

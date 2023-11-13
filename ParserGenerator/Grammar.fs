@@ -1,4 +1,4 @@
-namespace HnkParserGenerator
+namespace ParserGenerator
 
 type Grammar<'symbol when 'symbol : comparison> =
     private {

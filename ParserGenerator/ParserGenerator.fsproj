@@ -3,6 +3,7 @@
     <PropertyGroup>
         <TargetFramework>net6</TargetFramework>
         <OutputType>exe</OutputType>
+        <RootNamespace>ParserGenerator</RootNamespace>
     </PropertyGroup>
 
     <ItemGroup>

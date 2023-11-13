@@ -1,4 +1,4 @@
-namespace HnkParserGenerator.LR0
+namespace ParserGenerator.LR0
 
 type internal StateTransition<'symbol when 'symbol : comparison> = {
     sourceState : State<'symbol>

@@ -1,6 +1,6 @@
-namespace HnkParserGenerator.LALR
+namespace ParserGenerator.LALR
 
-open HnkParserGenerator
+open ParserGenerator
 open System.Diagnostics
 
 [<DebuggerDisplay("{ToString()}")>]
