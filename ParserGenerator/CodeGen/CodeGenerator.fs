@@ -487,6 +487,27 @@ let private writeParseFunction (context : Context<'s>) : Code =
                             stateActions
                             |> List.sortBy (fun (s, _) -> if s = context.eofSymbol then 0 else 1)
 
+                        let hasEofAction =
+                            match stateActions with
+                            | (symbol, _) :: _ when symbol = context.eofSymbol -> true
+                            | _ -> false
+
+                        let expectedSymbolListStr =
+                            stateActions
+                            |> Seq.map (fun (s, _) ->
+                                let ctor = context.getExpectedItemCaseForSymbol s
+                                $"{typeSignatureToStr context.expectedItemTypeSignature}.{ctor.name}")
+                            |> String.concat "; "
+                            |> sprintf "[ %s ]"
+
+                        if not hasEofAction then
+                            Line $"| _ when {lookaheadIsEofVarName} ->"
+                            Indented <| code {
+                                Line "// error"
+                                Line $"{expectedVarName} <- {expectedSymbolListStr}"
+                                Line $"{keepGoingVarName} <- false"
+                            }
+
                         for lookahead, action in stateActions do
                             match action with
                             | Shift newState -> writeShift lookahead newState
@@ -494,17 +515,10 @@ let private writeParseFunction (context : Context<'s>) : Code =
                             | Accept production -> writeAccept production
 
                         if stateActions.Length < context.inputType.constructors.Length then
-                            let expectedSymbolCtorsStr =
-                                stateActions
-                                |> Seq.map (fun (s, _) ->
-                                    let ctor = context.getExpectedItemCaseForSymbol s
-                                    $"{typeSignatureToStr context.expectedItemTypeSignature}.{ctor.name}")
-                                |> String.concat "; "
-
                             Line "| _ ->"
                             Indented <| code {
                                 Line "// error"
-                                Line $"{expectedVarName} <- [{expectedSymbolCtorsStr}]"
+                                Line $"{expectedVarName} <- {expectedSymbolListStr}"
                                 Line $"{keepGoingVarName} <- false"
                             }
                     }
